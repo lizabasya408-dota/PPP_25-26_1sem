@@ -1,3 +1,5 @@
+if __name__ == "__main__":
+    
 def traverse_structure(data, path=None, depth=0, history=None):
     if path is None:
         path = []
