@@ -1,118 +1,114 @@
 import json
 from datetime import datetime
 
-class LogEntry:
+class LogRecord:
     def __init__(self, level, time, message):
         self.level = level
         self.time = time
         self.message = message
 
-    @classmethod
-    def from_string(cls, line):
-        raise NotImplementedError
+    def __str__(self):
+        return f"[{self.time}] {self.level} {self.message}"
 
-    def get_level(self):
-        return self.level
-
-    def get_time(self):
-        return self.time
-
-    def get_message(self):
-        return self.message
-
-    def to_string(self):
-        raise NotImplementedError
-
-class Format1Log(LogEntry):
-    @classmethod
-    def from_string(cls, line):
+class LogParser:
+    @staticmethod
+    def parse(line):
         try:
-            prefix, msg = line.split('] ', 1)
-            timestamp_str = prefix.strip('[')
-            level_str, message = msg.split(': ', 1)
-            time_obj = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-            return cls(level=level_str, time=time_obj, message=message)
+            if line.startswith("fmt1"):
+                content = line[5:]
+                time_str = content[1:20]
+                rest = content[22:]
+                level, msg = rest.split(": ", 1)
+                dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                return LogRecord(level, dt, msg.strip())
+            
+            elif line.startswith("fmt2"):
+                content = line[5:]
+                parts = content.split(";")
+                level = parts[0]
+                time_str = parts[1]
+                msg = parts[2]
+                dt = datetime.strptime(time_str, "%Y/%m/%d-%H:%M")
+                return LogRecord(level, dt, msg.strip())
+            
+            elif line.startswith("json"):
+                content = line[5:]
+                data = json.loads(content)
+                dt = datetime.strptime(data["time"], "%Y-%m-%dT%H:%M:%S")
+                return LogRecord(data["level"], dt, data["msg"])
+            
+            else:
+                return None
         except Exception:
             return None
 
-    def to_string(self):
-        return f"[{self.time.strftime('%Y-%m-%d %H:%M:%S')}] {self.level}: {self.message}"
-
-class Format2Log(LogEntry):
-    @classmethod
-    def from_string(cls, line):
-        try:
-            level, time_str, message = line.split(';', 2)
-            time_obj = datetime.strptime(time_str, "%Y/%m/%d-%H:%M")
-            return cls(level=level, time=time_obj, message=message)
-        except Exception:
-            return None
-
-    def to_string(self):
-        return f"{self.level};{self.time.strftime('%Y/%m/%d-%H:%M')};{self.message}"
-
-class JSONLog(LogEntry):
-    @classmethod
-    def from_string(cls, line):
-        try:
-            data = json.loads(line)
-            time_obj = datetime.fromisoformat(data['time'])
-            return cls(level=data['level'], time=time_obj, message=data['msg'])
-        except Exception:
-            return None
-
-    def to_string(self):
-        return json.dumps({
-            'level': self.level,
-            'time': self.time.isoformat(),
-            'msg': self.message
-        })
-
-class LogProcessor:
+class LogSystem:
     def __init__(self):
-        self.entries = []
+        self.records = []
+        self.errors = []
 
     def add_line(self, line):
-        for cls in [Format1Log, Format2Log, JSONLog]:
-            entry = cls.from_string(line)
-            if entry:
-                self.entries.append(entry)
-                return True
-        print(f"Некорректная строка: {line}")
-        return False
+        record = LogParser.parse(line)
+        if record:
+            self.records.append(record)
+        else:
+            self.errors.append(line)
 
-    def filter_by_level(self, level):
-        return [e for e in self.entries if e.get_level() == level]
+    def execute_command(self, command_line):
+        parts = command_line.split()
+        cmd = parts[0]
 
-    def filter_by_time_range(self, start, end):
-        return [e for e in self.entries if start <= e.get_time() <= end]
+        if cmd == "count":
+            key, value = parts[1].split("=")
+            if key == "level":
+                count = sum(1 for r in self.records if r.level == value)
+                print(f"Count of {value}: {count}")
 
-    def count_by_level(self, level):
-        return len(self.filter_by_level(level))
+        elif cmd == "list":
+            key, value = parts[1].split("=")
+            if key == "level":
+                print(f"List of {value}:")
+                for r in self.records:
+                    if r.level == value:
+                        print(r)
 
-    def list_logs(self, level=None):
-        if level:
-            return self.filter_by_level(level)
-        return self.entries
+        elif cmd == "range":
+            start_str = f"{parts[1]} {parts[2]}"
+            end_str = f"{parts[3]} {parts[4]}"
+            start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M")
+            end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M")
+            
+            print(f"Logs from {start_dt} to {end_dt}:")
+            for r in self.records:
+                if start_dt <= r.time <= end_dt:
+                    print(r)
+        
+        elif cmd == "errors":
+            print("Parsing errors:")
+            for err in self.errors:
+                print(err)
 
-    def get_stats(self):
-        stats = {}
-        for e in self.entries:
-            lvl = e.get_level()
-            stats[lvl] = stats.get(lvl, 0) + 1
-        return stats
+raw_logs = [
+    "fmt1 [2025-10-01 12:34:56] INFO: System started",
+    "fmt2 ERROR;2025/10/01-12:35;Disk full",
+    "json {\"level\": \"WARNING\", \"time\": \"2025-10-01T12:36:00\", \"msg\": \"High load\"}",
+    "fmt1 [2025-10-01 12:40:00] ERROR: Connection lost",
+    "broken_log_format example"
+]
+user_commands = [
+    "count level=ERROR",
+    "list level=WARNING",
+    "range 2025-10-01 12:30 2025-10-01 13:00",
+    "errors"
+]
 
-def parse_time_range(start_str, end_str):
-    try:
-        start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M")
-        end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M")
-        return start_dt, end_dt
-    except:
-        try:
-            start_dt = datetime.fromisoformat(start_str)
-            end_dt = datetime.fromisoformat(end_str)
-            return start_dt, end_dt
-        except:
-            return None, None
-if __name__ == "__main__":
-       main()
+system = LogSystem()
+
+for line in raw_logs:
+    system.add_line(line)
+
+print("--- Execution Results ---")
+for cmd in user_commands:
+    print(f"> {cmd}")
+    system.execute_command(cmd)
+    print("-" * 20)
