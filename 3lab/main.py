@@ -1,30 +1,41 @@
-def traverse_structure(obj, depth=0, path=None, history=None):
+def traverse_structure(data, path=None, depth=0, history=None):
     if path is None:
         path = []
     if history is None:
         history = []
 
-    if isinstance(obj, dict):
-        for key, value in obj.items():
+    if isinstance(data, dict):
+        for key, value in data.items():
             new_path = path + [key]
-            history.append({
-                'depth': depth,
-                'key_or_index': key,
-                'value': value,
-                'path': new_path
-            })
-            traverse_structure(value, depth + 1, new_path, history)
-    elif isinstance(obj, list):
-        for index, item in enumerate(obj):
+            traverse_structure(value, new_path, depth + 1, history)
+    elif isinstance(data, list):
+        for index, value in enumerate(data):
             new_path = path + [index]
-            history.append({
-                'depth': depth,
-                'key_or_index': index,
-                'value': item,
-                'path': new_path
-            })
-            traverse_structure(item, depth + 1, new_path, history)
+            traverse_structure(value, new_path, depth + 1, history)
+    else:
+        record = {
+            "depth": depth,
+            "path": path,
+            "value": data
+        }
+        history.append(record)
+
     return history
 
-if __name__ == "__main__":
-       main()
+sample_json = {
+    "id": 101,
+    "info": {
+        "name": "Alice",
+        "skills": ["Python", "Git"],
+        "location": {
+            "city": "Wonderland",
+            "coords": [55.1, 33.2]
+        }
+    },
+    "is_active": True
+}
+
+result = traverse_structure(sample_json)
+
+for item in result:
+    print(item)
