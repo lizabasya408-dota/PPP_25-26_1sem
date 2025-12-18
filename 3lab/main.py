@@ -27,3 +27,4 @@ def traverse_structure(obj, depth=0, path=None, history=None):
     return history
 
 if __name__ == "__main__":
+       main()
