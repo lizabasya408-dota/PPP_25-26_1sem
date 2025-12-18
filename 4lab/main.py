@@ -114,3 +114,5 @@ def parse_time_range(start_str, end_str):
             return start_dt, end_dt
         except:
             return None, None
+if __name__ == "__main__":
+       main()
